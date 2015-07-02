@@ -1,0 +1,27 @@
+(clamps a value between limits)
+
+(#1 is value)
+(#2 is lower bound, inclusive)
+(#3 is upper bound, inclusive)
+
+o<clamp> sub
+	#<val> = #1
+	#<lbound> = #2
+	#<ubound> = #3
+	
+	(Return no value if clamping values are bad)
+	o1112 if [#<ubound> LE #<lbound>]
+		(msg, Clamping values are bad- get your bounds straight)
+		o<clamp> return
+	o1112 endif
+	
+	o1111 if [#<val> GT #<ubound>]
+		o<clamp> return [#<ubound>]
+	o1111 elseif [#<val> LT #<lbound>]
+		o<clamp> return [#<lbound>]
+	o1111 else
+		o<clamp> return [#<val>]
+	o1111 endif
+o<clamp> endsub
+
+M2

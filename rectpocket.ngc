@@ -1,0 +1,99 @@
+(Uses the following global definitions:)
+(#<_zsafe> - safe height)
+(#<_feedxy> - xy feed rate)
+(#<_feedz> - z feed rate)
+(#<_toolr> - cutter radius)
+(#<_cutdepth> - how much material to take off per pass)
+(#<_stepover> - fraction of tool DIAMETER to clear each pass)
+
+
+(#1 = width, x)
+(#2 = height, y)
+(#3 = center, x)
+(#4 = center, y)
+(#5 = top of workpiece)
+(#6 = min z)
+
+o<rectpocket> sub
+	#<w> = #1
+	#<h> = #2
+	#<cx> = #3
+	#<cy> = #4
+	#<worktop> = #5
+	#<zlow> = #6
+	
+	(distances off of center)
+	#<xmax> = [[#<w> / 2 - #<_toolr>]]
+	#<ymax> = [[#<h> / 2 - #<_toolr>]]
+	o135 if [#<w> LT #<h>]
+		(#<ystep> = [#<_toolr>])
+		#<ystep> = [#<_toolr> * 2 * #<_stepover>]
+		#<xstep> = [[#<ystep> * #<xmax> / #<ymax>]]
+	o135 else
+		(#<xstep> = [#<_toolr>])
+		#<xstep> = [#<_toolr> * 2 * #<_stepover>]
+		#<ystep> = [[#<xstep> * #<ymax> / #<xmax>]]
+	o135 endif
+	G00 Z[#<_zsafe>]
+	G00 X[[#<cx> - #<xmax>]] Y[#<cy> - #<ymax>]
+	G01 F[#<_feedz>] Z[[#<worktop> + 0.05]]
+	o9090 if[#<worktop> - #<_cutdepth> GE #<zlow>]
+		#<ccd> = [#<worktop> - #<_cutdepth>]
+	o9090 else
+		#<ccd> = #<zlow>
+	o9090 endif
+	#<numsteps> = [4]
+
+
+	o136 while [#<ccd> GE #<zlow>]
+		(Feed down to new layer from corner)
+		G00 X[[#<cx> - #<xmax>]] Y[#<cy> - #<ymax>]
+		G01 F#<_feedxy> X#<cx> Y#<cy> Z#<ccd>
+		
+		#<xlim> = [#<xstep>]
+		#<ylim> = [#<ystep>]
+		#<currentstep> = [0]
+
+		o137 while [[#<xlim> LE #<xmax>] AND [#<ylim> LE #<ymax>]]
+			o138 if [#<currentstep> EQ 0]
+				G01 F[#<_feedxy>] Y[[#<cy> - #<ylim>]]
+			o138 elseif [#<currentstep> EQ 1]
+				G01 F[#<_feedxy>] X[#<cx> - #<xlim>]
+			o138 elseif [#<currentstep> EQ 2]
+				G01 F[#<_feedxy>] Y[#<cy> + #<ylim>]
+				o139 if [[#<ylim> LT #<ymax>] AND [[#<ylim> + #<ystep>] GT #<ymax>]]
+					#<ylim> = [#<ymax>]
+				o139 else
+					#<ylim> = [[#<ylim> + #<ystep>]]
+				o139 endif
+			o138 else
+				G01 F[#<_feedxy>] X[#<cx> + #<xlim>]
+				o140 if [[#<xlim> LT #<xmax>] AND [[#<xlim> + #<xstep>] GT #<xmax>]]
+					#<xlim> = [#<xmax>]
+				o140 else
+					#<xlim> = [[#<xlim> + #<xstep>]]
+				o140 endif
+			o138 endif
+
+			(Set next step in the iteration)
+			#<currentstep> = [[[#<currentstep> + 1] MOD #<numsteps>]]
+		o137 endwhile
+
+		(Finish up this pass)
+		G01 F[#<_feedxy>] X[#<cx> + #<xmax>]
+		G01 F[#<_feedxy>] Y[#<cy> - #<ymax>]
+		G01 F[#<_feedxy>] X[#<cx> - #<xmax>]
+
+		(Set next depth)
+		o141 if [[#<ccd> GT #<zlow>] AND [[#<ccd> - #<_cutdepth>] LT #<zlow>]]
+			#<ccd> = [#<zlow>]
+		o141 else
+			#<ccd> = [[#<ccd> - #<_cutdepth>]]
+		o141 endif
+	o136 endwhile
+	G00 Z[#<_zsafe>]
+	(End rectangular pocket)
+	
+o<rectpocket> endsub
+
+M2
