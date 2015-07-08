@@ -13,6 +13,7 @@
 (#4 = center, y)
 (#5 = top of workpiece)
 (#6 = min z)
+(#7 = finishing passes to do; 0 = none, otherwise count to be performed)
 
 o<rectpocket> sub
 	#<w> = #1
@@ -21,6 +22,12 @@ o<rectpocket> sub
 	#<cy> = #4
 	#<worktop> = #5
 	#<zlow> = #6
+	
+	(How many finishing passes to do)
+	#<tofinish> = #7
+	
+	(Finishing passes completed)
+	#<finishdone> = 0
 	
 	(distances off of center)
 	#<xmax> = [[#<w> / 2 - #<_toolr>]]
@@ -43,7 +50,6 @@ o<rectpocket> sub
 		#<ccd> = #<zlow>
 	o9090 endif
 	#<numsteps> = [4]
-
 
 	o136 while [#<ccd> GE #<zlow>]
 		(Feed down to new layer from corner)
@@ -87,6 +93,8 @@ o<rectpocket> sub
 		(Set next depth)
 		o141 if [[#<ccd> GT #<zlow>] AND [[#<ccd> - #<_cutdepth>] LT #<zlow>]]
 			#<ccd> = [#<zlow>]
+		o141 elseif [[#<tofinish> GE 1] AND [#<ccd> EQ #<zlow>] AND [#<finishdone> LT #<tofinish>]]
+			#<finishdone> = [#<finishdone> + 1]
 		o141 else
 			#<ccd> = [[#<ccd> - #<_cutdepth>]]
 		o141 endif
