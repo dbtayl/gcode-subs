@@ -14,14 +14,36 @@
 (#5 = top of workpiece)
 (#6 = min z)
 (#7 = finishing passes to do; 0 = none, otherwise count to be performed)
+(#8 = mode:)
+	(0, or anything else not covered below: width, height, centerX, centerY)
+	(1: minX, minY, maxX, maxY)
 
 o<rectpocket> sub
+	#<mode> = #8
+	
+	(Default: width, height, centerX, centerY)
 	#<w> = #1
 	#<h> = #2
 	#<cx> = #3
 	#<cy> = #4
 	#<worktop> = #5
 	#<zlow> = #6
+	
+	(Allow for alternate modes)
+	o<rectpocketmode> if [#<mode> EQ 1] (minX, minY, maxX, maxY)
+		#<minX> = #1
+		#<minY> = #2
+		#<maxX> = #3
+		#<maxY> = #4
+		
+		#<w> = [#<maxX> - #<minX>]
+		#<h> = [#<maxY> - #<minY>]
+		#<cx> = [[#<maxX> + #<minX>]/2]
+		#<cy> = [[#<maxY> + #<minY>]/2]
+		
+		#<worktop> = #5
+		#<zlow> = #6
+	o<rectpocketmode> endif
 	
 	(How many finishing passes to do)
 	#<tofinish> = #7
