@@ -6,6 +6,8 @@
 (#<_cutdepth> - how much material to take off per pass)
 (#<_stepover> - fraction of tool DIAMETER to clear each pass)
 
+(In general, 0 is used to indicate X, while 1 is used for Y)
+
 
 (#1 = width, x)
 (#2 = height, y)
@@ -14,12 +16,12 @@
 (#5 = top of workpiece)
 (#6 = min z)
 (#7 = finishing passes to do; 0 = none, otherwise count to be performed)
-(#8 = mode:)
+(#8 = coordmode:)
 	(0, or anything else not covered below: width, height, centerX, centerY)
 	(1: minX, minY, maxX, maxY)
 
 o<rectpocket> sub
-	#<mode> = #8
+	#<coordmode> = #8
 	
 	(Default: width, height, centerX, centerY)
 	#<w> = #1
@@ -29,8 +31,8 @@ o<rectpocket> sub
 	#<worktop> = #5
 	#<zlow> = #6
 	
-	(Allow for alternate modes)
-	o<rectpocketmode> if [#<mode> EQ 1] (minX, minY, maxX, maxY)
+	(Allow for alternate coordinate modes)
+	o<rectpocketcoordmode> if [#<coordmode> EQ 1] (minX, minY, maxX, maxY)
 		#<minX> = #1
 		#<minY> = #2
 		#<maxX> = #3
@@ -43,86 +45,143 @@ o<rectpocket> sub
 		
 		#<worktop> = #5
 		#<zlow> = #6
-	o<rectpocketmode> endif
+	o<rectpocketcoordmode> endif
 	
 	(How many finishing passes to do)
 	#<tofinish> = #7
 	
 	(Finishing passes completed)
 	#<finishdone> = 0
+
 	
-	(distances off of center)
-	#<xmax> = [[#<w> / 2 - #<_toolr>]]
-	#<ymax> = [[#<h> / 2 - #<_toolr>]]
-	o135 if [#<w> LT #<h>]
-		(#<ystep> = [#<_toolr>])
-		#<ystep> = [#<_toolr> * 2 * #<_stepover>]
-		#<xstep> = [[#<ystep> * #<xmax> / #<ymax>]]
-	o135 else
-		(#<xstep> = [#<_toolr>])
-		#<xstep> = [#<_toolr> * 2 * #<_stepover>]
-		#<ystep> = [[#<xstep> * #<ymax> / #<xmax>]]
-	o135 endif
+	(Furthest X and Y dimensions from center)
+	#<halfX> = [#<w>/2 - #<_toolr>]
+	#<halfY> = [#<h>/2 - #<_toolr>]
+	
+	(Because of how we iterate, we'll often end up starting an iteration)
+	(in a different corner than we did previously. Instead of feeding)
+	(back to the same corner, keep track of where we are and start from)
+	(there to minimize travel distance)
+	
+	(We start in the -X, -Y corner)
+	#<cxc> = -1
+	#<cyc> = -1
+	
+	
+	(Move to start)
 	G00 Z[#<_zsafe>]
-	G00 X[[#<cx> - #<xmax>]] Y[#<cy> - #<ymax>]
-	G01 F[#<_feedz>] Z[[#<worktop> + 0.05]]
-	o9090 if[#<worktop> - #<_cutdepth> GE #<zlow>]
-		#<ccd> = [#<worktop> - #<_cutdepth>]
-	o9090 else
-		#<ccd> = #<zlow>
-	o9090 endif
-	#<numsteps> = [4]
-
-	o136 while [#<ccd> GE #<zlow>]
-		(Feed down to new layer from corner)
-		G00 X[[#<cx> - #<xmax>]] Y[#<cy> - #<ymax>]
-		G01 F#<_feedxy> X#<cx> Y#<cy> Z#<ccd>
+	X[#<cx> + #<halfX>*#<cxc>] Y[#<cy> + #<halfY>*#<cyc>]
+	G01 F[#<_feedz>] Z[#<worktop>]
+	
+	#<ccd> = [#<worktop> - #<_cutdepth>]
+	o<clamp> call [#<ccd>] [#<zlow>] [#<worktop>]
+	#<ccd> = #<_value>
+	
+	(Clear inner area)
+	(Traverse shorter dimension ONCE, go back and forth along long dimension)
+	(This minimizes direction reversals; both long-short and short-long end up being the same travel distance)
+	
+	o<rpdepthwhile> while [#<ccd> GE #<zlow>]
+		(Go to the start)
+		G01 F#<_feedxy> X[#<cx> + #<halfX>*#<cxc>] Y[#<cy> + #<halfY>*#<cyc>]
 		
-		#<xlim> = [#<xstep>]
-		#<ylim> = [#<ystep>]
-		#<currentstep> = [0]
+		(Determine direction to ramp in, as well as ramping distance)
+		#<rampd> = [4*#<_toolr>]
+		o<rampdirif> if [#<w> GE #<h>]
+			#<rampdir> = 0
+			o<clamp> call [#<rampd>] [0] [#<w> - 2*#<_toolr>]
+			#<rampd> = #<_value>
+		o<rampdirif> else
+			#<rampdir> = 1
+			o<clamp> call [#<rampd>] [0] [#<h> - 2*#<_toolr>]
+			#<rampd> = #<_value>
+		o<rampdirif> endif
+		
+		(Ramp down)
+		o<rampinif> if [#<rampdir> EQ 0]
+			G01 F#<_feedxy> X[ [#<cx> + #<halfX>*#<cxc>] + #<rampd>*[-#<cxc>]] Z[#<ccd> + #<_cutdepth>/2]
+			X[#<cx> + #<halfX>*#<cxc>] Z#<ccd>
+		o<rampinif> else
+			G01 F#<_feedxy> Y[ [#<cy> + #<halfY>*#<cyc>] + #<rampd>*[-#<cyc>]] Z[#<ccd> + #<_cutdepth>/2]
+			Y[#<cy> + #<halfY>*#<cyc>] Z#<ccd>
+		o<rampinif> endif
+		
+		(Cut around perimeter)
+		Y[#<cy> + #<halfY>*[-#<cyc>]]
+		X[#<cx> + #<halfX>*[-#<cxc>]]
+		Y[#<cy> + #<halfY>*#<cyc>]
+		X[#<cx> + #<halfX>*#<cxc>]
+		
+		(Clear the inside)
+		#<longedge> = #<rampdir>
+		
+		#<done> = 0
+		
+		(Skip inside clearing if the pocket is small enough in one dimension to)
+		(make clearing passes pointless)
+		o<doneimmediateif> if [ [#<w> LT 4*#<_toolr>] OR [#<h> LT 4*#<_toolr>] ]
+			#<done> = 1
+		o<doneimmediateif> endif
+		
+		(X is long dimension)
+		o<rpclearif> if [#<longedge> EQ 0]
 
-		o137 while [[#<xlim> LE #<xmax>] AND [#<ylim> LE #<ymax>]]
-			o138 if [#<currentstep> EQ 0]
-				G01 F[#<_feedxy>] Y[[#<cy> - #<ylim>]]
-			o138 elseif [#<currentstep> EQ 1]
-				G01 F[#<_feedxy>] X[#<cx> - #<xlim>]
-			o138 elseif [#<currentstep> EQ 2]
-				G01 F[#<_feedxy>] Y[#<cy> + #<ylim>]
-				o139 if [[#<ylim> LT #<ymax>] AND [[#<ylim> + #<ystep>] GT #<ymax>]]
-					#<ylim> = [#<ymax>]
-				o139 else
-					#<ylim> = [[#<ylim> + #<ystep>]]
-				o139 endif
-			o138 else
-				G01 F[#<_feedxy>] X[#<cx> + #<xlim>]
-				o140 if [[#<xlim> LT #<xmax>] AND [[#<xlim> + #<xstep>] GT #<xmax>]]
-					#<xlim> = [#<xmax>]
-				o140 else
-					#<xlim> = [[#<xlim> + #<xstep>]]
-				o140 endif
-			o138 endif
-
-			(Set next step in the iteration)
-			#<currentstep> = [[[#<currentstep> + 1] MOD #<numsteps>]]
-		o137 endwhile
-
-		(Finish up this pass)
-		G01 F[#<_feedxy>] X[#<cx> + #<xmax>]
-		G01 F[#<_feedxy>] Y[#<cy> - #<ymax>]
-		G01 F[#<_feedxy>] X[#<cx> - #<xmax>]
-
+			#<cuty> = [[#<cy> + #<halfY>*#<cyc>] + 2*#<_toolr>*#<_stepover>*[-#<cyc>]]
+			o<clamp> call [#<cuty>] [#<cy> - #<halfY> + #<_toolr>/2] [#<cy> + #<halfY> - #<_toolr>/2]
+			#<cuty> = #<_value>
+			#<end> = [[#<cy> + #<halfY>*[-#<cyc>]] - #<_toolr>/2*[-#<cyc>]]
+			
+			o<rpclearlxwhile> while [#<done> EQ 0]
+				G01 F#<_feedxy> Y#<cuty>
+				X[#<cx> + [#<halfX> - #<_toolr>/2]*[-#<cxc>]]
+				#<cxc> = -#<cxc>
+				
+				(Done if this pass hit our destination, or we're within the outline previously cut)
+				o<lxdoneif> if [ [#<cuty> EQ #<end>] OR [ [#<cuty> - [#<cy> - #<cyc>*#<halfY>]]*#<cyc> LT 2*#<_toolr>*.95 ] ]
+					#<done> = 1
+				o<lxdoneif> endif
+				
+				#<cuty> = [#<cuty> + 2*#<_toolr>*#<_stepover>*[-#<cyc>]]
+				o<clamp> call [#<cuty>] [#<cy> - #<halfY> + #<_toolr>/2] [#<cy> + #<halfY> - #<_toolr>/2]
+				#<cuty> = #<_value>
+				
+			o<rpclearlxwhile> endwhile
+			#<cyc> = -#<cyc>
+			
+		(Y is long dimension)
+		o<rpclearif> else
+			#<cutx> = [[#<cx> + #<halfX>*#<cxc>] + 2*#<_toolr>*#<_stepover>*[-#<cxc>]]
+			o<clamp> call [#<cutx>] [#<cx> - #<halfX> + #<_toolr>/2] [#<cx> + #<halfX> - #<_toolr>/2]
+			#<cutx> = #<_value>
+			#<end> = [[#<cx> + #<halfX>*[-#<cxc>]] - #<_toolr>/2*[-#<cxc>]]
+			
+			o<rpclearlywhile> while [#<done> EQ 0]
+				G01 F#<_feedxy> X#<cutx>
+				Y[#<cy> + [#<halfY> - #<_toolr>/2]*[-#<cyc>]]
+				#<cyc> = -#<cyc>
+				
+				(Done if this pass hit our destination, or we're within the outline previously cut)
+				o<lydoneif> if [ [#<cutx> EQ #<end>] OR [ [#<cutx> - [#<cx> - #<cxc>*#<halfX>]]*#<cxc> LT 2*#<_toolr>*.95 ] ]
+					#<done> = 1
+				o<lydoneif> endif
+				
+				#<cutx> = [#<cutx> + 2*#<_toolr>*#<_stepover>*[-#<cxc>]]
+				o<clamp> call [#<cutx>] [#<cx> - #<halfX> + #<_toolr>/2] [#<cx> + #<halfX> - #<_toolr>/2]
+				#<cutx> = #<_value>
+				
+			o<rpclearlywhile> endwhile
+			#<cxc> = -#<cxc>
+		o<rpclearif> endif
+	
 		(Set next depth)
-		o141 if [[#<ccd> GT #<zlow>] AND [[#<ccd> - #<_cutdepth>] LT #<zlow>]]
+		o<rpdepthwhiledepth> if [[#<ccd> GT #<zlow>] AND [[#<ccd> - #<_cutdepth>] LT #<zlow>]]
 			#<ccd> = [#<zlow>]
-		o141 elseif [[#<tofinish> GE 1] AND [#<ccd> EQ #<zlow>] AND [#<finishdone> LT #<tofinish>]]
+		o<rpdepthwhiledepth> elseif [[#<tofinish> GE 1] AND [#<ccd> EQ #<zlow>] AND [#<finishdone> LT #<tofinish>]]
 			#<finishdone> = [#<finishdone> + 1]
-		o141 else
+		o<rpdepthwhiledepth> else
 			#<ccd> = [[#<ccd> - #<_cutdepth>]]
-		o141 endif
-	o136 endwhile
-	G00 Z[#<_zsafe>]
-	(End rectangular pocket)
+		o<rpdepthwhiledepth> endif
+	o<rpdepthwhile> endwhile
 	
 o<rectpocket> endsub
 
