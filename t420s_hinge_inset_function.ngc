@@ -1,0 +1,334 @@
+(This mills the space to connect ThinkPad T420s/T430s hinges to a workpiece)
+(Assumes mm units)
+
+(Uses global variables:)
+(#<_toolr> - radius of cutter)
+(#<_cutdepth> - max cut depth)
+(#<_feedxy> - XY feed rate)
+(#<_feedz> - Z feed rate)
+(#<_zsafe> - safe Z height)
+(#<_stepover> - clearing pass stepover, in fraction of tool diameter)
+
+(Takes arguments:)
+(#1 = x reference)
+(#2 = y reference)
+(#3 = z reference)
+(#4 = x_mirror; +1 = no mirror, -1 = mirror)
+
+(referenece is the lower-left corner of the hinge, top side of cutout)
+
+o<hinge_inset_lid_function> sub 
+	(Don't attempt the cut if we don't have the 2mm end mill)
+	o1000 if [#<_toolr> NE 1]
+		o<hinge_inset_lid_function> return
+	o1000 endif
+	
+	#<xref> = #1
+	#<yref> = #2
+	#<zref> = #3
+	#<mirror> = #4
+	
+	(First... get to safe height)
+	G00 Z#<_zsafe>
+
+
+
+	(This block cuts out the channel for the reinforcing rod)
+	(Reinforcing rod is 2mm wide trench, starting 2.07mm up, far edge 1.1mm left from reference)
+	(4.12mm deep, 69mm long)
+	#<startx> = [#<xref> + #<mirror> * [-1.1 + #<_toolr>]]
+	#<starty> = [#<yref> + 2.07 + #<_toolr>]
+	#<endx> = #<startx>
+	#<endy> = [#<starty> + 69 - 2 * #<_toolr>]
+	#<startz> = #<zref>
+	#<endz> = [#<startz> - 4.12]
+	
+	G00 Z#<_zsafe>
+	G00 X#<startx> Y#<starty>
+	G01 F#<_feedz> Z#<startz>
+	o<clamp> call [#<startz> - #<_cutdepth>] [#<endz>] [#<startz>]
+	#<ccd> = #<_value>
+	
+	o1001 while [#<ccd> GE #<endz>]
+		g01 F#<_feedxy> X#<endx> Y#<endy> Z#<ccd>
+		g01 F#<_feedxy> X#<startx> Y#<starty> Z#<ccd>
+		
+		o1002 if [ [#<ccd> GT #<endz>] AND [[#<ccd> - #<_cutdepth>] LE #<endz>] ]
+			#<ccd> = #<endz>
+		o1002 else
+			#<ccd> = [#<ccd> - #<_cutdepth>]
+		o1002 endif
+	o1001 endwhile
+	
+	G00 Z#<_zsafe> (retract)
+	(End of reinforcing rod channel block)
+	
+	
+	
+	
+	
+	(Cut out another rectangle for rounded part of hinge)
+	(Remember to add cut-in on right side for corner!)
+	(6.1mm tall, 7.2mm wide- maybe a hair more)
+	(LL corner is 0.6mm below and 14.2mm right of reference)
+	(Start milling out space for rounded part of hinge)
+	G00 Z#<_zsafe> (retract)
+	
+	#<rw> = [7.2+0.4]
+	#<rh> = [6.1+0.7] (shallow height)
+	#<rhd> = [#<rh> - 0.5] (deep height)
+	#<rxp> = 0.3 (x padding)
+	#<rx> = [14.2] (LL corner of pocket)
+	#<ry> = [-0.6] (LL corner of pocket)
+	#<ryd> = [-0.6+0.5] (LL corner of pocket)
+	#<rd> = 3.9 (depth, shallow)
+	#<rdd> = [#<rd>+0.5] (depth, deep)
+	
+	(shallow part)
+	o<rectpocket> call [#<rw> + #<rxp>] [#<rh>] [#<xref> + #<mirror>*[#<rx> + #<rw>/2 + #<rxp>/2]] [#<yref> + #<ry> + #<rh>/2] [#<zref>] [#<zref> - #<rd>]
+	
+	(deep part)
+	o<rectpocket> call [#<rw> + #<rxp>] [#<rhd>] [#<xref> + #<mirror>*[#<rx> + #<rw>/2 + #<rxp>/2]] [#<yref> + #<ry> + #<rh>/2 + 0.5/2] [#<zref> - #<rd>] [#<zref> - #<rdd>]
+	
+	
+	G00 Z#<_zsafe> (retract)
+	
+	(Mill out the corner a bit here- not done by pocket operation)
+	(Go to start)
+	G00 X[#<xref> + #<mirror> * [#<rx> + #<_toolr>]] Y[#<yref> + #<ry> + #<_toolr>]
+	#<endz> = [#<zref> - 3.8] (This doesn't need to be as deep as the other parts)
+	#<ccd> = [#<zref> - #<_cutdepth>]
+	o1009 while [#<ccd> GE #<endz>]
+		G01 F#<_feedz> Z#<ccd>
+		G01 F#<_feedxy> X[#<xref> + #<mirror> * #<rx>]
+		G01 F#<_feedxy> X[#<xref> + #<mirror> * [#<rx> + #<_toolr>]]
+		
+		o1010 if [ [#<ccd> GT #<endz>] AND [[#<ccd> - #<_cutdepth>] LE #<endz>] ]
+			#<ccd> = #<endz>
+		o1010 else
+			#<ccd> = [#<ccd> - #<_cutdepth>]
+		o1010 endif
+	o1009 endwhile
+	
+	G00 Z#<_zsafe> (retract)
+	
+	(End milling out space for rounded part of hinge)
+	
+	
+	
+	
+	
+	(This block starts cuts AROUND screw-down points)
+	(left screw attachment arc starts 3.29mm in +y; arc has d=6mm)
+	(need to cut into left screw attachment arc along +x by 1mm for corner clearance)
+	(flat on top past first arc is 1.6411 mm)
+	
+	G00 Z#<_zsafe>
+	
+	#<startx> = [#<xref> + #<mirror> * #<_toolr>]
+	#<starty> = [#<yref> + #<_toolr>]
+	#<startz> = #<zref>
+	#<endz> = [#<startz> - 3.8]
+	o<clamp> call [#<startz> - #<_cutdepth>] [#<endz>] [#<startz>]
+	#<ccd> = #<_value>
+	
+	g00 X#<startx> Y#<starty>
+	g01 F#<_feedz> Z#<startz>
+	
+	o1008 while [#<ccd> GE #<endz>]
+		(Plunge along first cut)
+		#<cury> = [#<starty> + 3.29 - #<_toolr>]
+		g01 F#<_feedxy> Y[#<cury>] Z#<ccd>
+		#<arcr> = [6/2 + #<_toolr>]
+		#<cury> = [#<starty> + 3.29 + #<arcr> - #<_toolr>]
+		o1003 if [#<mirror> GT 0]
+			#<curx> = [#<xref> + #<arcr> + #<_toolr>]
+			G02 F#<_feedxy> X[#<curx>] Y[#<cury>] I[#<arcr>] J[0]
+		o1003 else
+			#<curx> = [#<xref> - [#<arcr>+#<_toolr>]]
+			G03 F#<_feedxy> X[#<curx>] Y[#<cury>] I[-#<arcr>] J[0]
+		o1003 endif
+		
+		(Arc around first curve)
+		#<arcr> = [3.8/2 - #<_toolr>]
+		#<lhs> = 1.15 (left side of flat before indent arc)
+		#<nextx> = [#<curx> + #<mirror> * [#<lhs> + #<_toolr>]]
+		g01 F#<_feedxy> X#<nextx>
+		#<curx> = #<nextx>
+		#<nextx> = [#<curx> + #<mirror>*2*#<arcr>]
+		o1004 if[#<mirror> GT 0]
+			g03 F#<_feedxy> X[#<nextx>] Y[#<cury>] I[#<arcr>] J[0]
+		o1004 else
+			g02 F#<_feedxy> X[#<nextx>] Y[#<cury>] I[-#<arcr>] J[0]
+		o1004 endif
+
+		(Double back to clean up)
+		G01 F#<_feedxy> X[#<curx> - #<mirror> * 0.2]
+		
+		(flat part after indent)
+		#<arcr> = [6/2 + #<_toolr>]
+		#<curx> = #<nextx>
+		#<nextx> = [#<xref> + #<mirror>*[14.2 - #<arcr> + #<_toolr>]]
+		g01 F#<_feedxy> X#<nextx>
+		
+		(Arc around second curve)
+		#<curx> = #<nextx>
+		#<nextx> = [#<curx> + #<mirror>*#<arcr>]
+		#<nexty> = [#<cury> - #<arcr>]
+		o1005 if[#<mirror> GT 0]
+			g02 F#<_feedxy> X[#<nextx>] Y[#<nexty>] I[0] J[-#<arcr>]
+		o1005 else
+			g03 F#<_feedxy> X[#<nextx>] Y[#<nexty>] I[0] J[-#<arcr>]
+		o1005 endif
+		#<cury> = #<nexty>
+		
+		(Double back up by 2.08mm, plus tool offset)
+		#<cury> = [#<cury> + 2.08 + #<_toolr>]
+		g01 F#<_feedxy> Y#<cury>
+		
+		(Total width of the overall cutout is 20.2mm- cut over to the far edge)
+		#<curx> = [#<xref> + #<mirror>*[20.2 - #<_toolr>]]
+		g01 F#<_feedxy> X#<curx>
+		
+		(Can't have a rounded edge... cut down by tool radius)
+		g01 F#<_feedxy> Y[#<cury> - #<_toolr>]
+		
+		(Total height of the overall cutout is 9.3mm- cut up to top edge)
+		#<cury> = [#<yref> + 9.3 - #<_toolr>]
+		g01 F#<_feedxy> Y#<cury>
+		
+		(Cut back across to starting x)
+		#<curx> = [#<xref> + #<mirror>*#<_toolr>]
+		g01 F#<_feedxy> X#<curx>
+		
+		(Basically want to cut right back down to our starting point)
+		(But there's a little piece that won't get cut if we do that)
+		(Take a detour to cut that bit out, using the channel we already)
+		(cut to cover the edge we would miss cutting by doing so)
+		#<cury> = [#<cury> - 1.5]
+		#<curx> = [#<curx> + #<mirror>*0.6]
+		g01 F#<_feedxy> X#<curx> Y#<cury>
+		#<cury> = [#<cury> - 1.5]
+		#<curx> = [#<curx> - #<mirror>*0.6]
+		g01 F#<_feedxy> X#<curx> Y#<cury>
+		
+		(Cut back to the start)
+		#<cury> = [#<yref> + #<_toolr>]
+		#<curx> = [#<xref> + #<mirror> * #<_toolr>]
+		g01 F#<_feedxy> X#<curx> Y#<cury>
+		
+		(There's a sharp corner on the hinge, but our cuts are rounded)
+		(Cut out some extra to accommodate the corner)
+		g01 F#<_feedxy> X[#<curx> + #<mirror>*#<_toolr>]
+		g01 F#<_feedxy> X#<curx>
+		
+		(Set next cut depth)
+		o1006 if [ [#<ccd> GT #<endz>] AND [[#<ccd> - #<_cutdepth>] LE #<endz>] ]
+			#<ccd> = #<endz>
+		o1006 else
+			#<ccd> = [#<ccd> - #<_cutdepth>]
+		o1006 endif
+	o1008 endwhile
+	
+	G00 Z#<_zsafe> (retract)
+	(End of cuts AROUND screw-down points)
+		
+	
+	
+	
+	
+	
+	(Mill out hole for hinge cover)
+	(starts 21.57 from xref, top is 7.23mm from yref, bottom is 1.93mm from yref)
+	(21.1mm wide, 9.16 tall, plus padding to make sure bottom corners aren't rounded)
+	G00 Z#<_zsafe> (retract)
+	
+	#<extra> = 0.2
+	#<rw> = [21.1 + #<extra>]
+	#<rh> = [9.16 + 2]
+	#<rx> = [21.57 - #<mirror> * #<extra>] (LL corner of pocket)
+	#<ry> = [-1.93] (LL corner of pocket)
+	#<rd> = 5.5 (depth)
+	
+	o<rectpocket> call [#<rw>] [#<rh> + #<_toolr>] [#<xref> + #<mirror>*[#<rx> + #<rw>/2]] [#<yref> + #<ry> + #<rh>/2 - #<_toolr>] [#<zref>] [#<zref> - #<rd>]
+	
+	G00 Z#<_zsafe> (retract)
+	(End milling out hinge cover hole)
+	
+	
+	
+	
+	
+	
+	(FIXME: Need to mill down top side of hinge outsets)
+	(Remember to add cut-in on right side for edge to stay "flat" at the corner!)
+	(Higher outset is 0.5mm below reference)
+	(Lower offset is 1.1mm below reference)
+	
+	G00 Z#<_zsafe> (retract)
+	
+	(first layer- starts x,y = 2,0 mm from reference, 12.4 x 6.27mm)
+	#<rw> = [12.4 + 3*#<_toolr>]
+	#<rh> = [6.27]
+	#<rhp> = [0.4]
+	#<rx> = [2 - #<_toolr>]
+	#<ry> = 0
+	#<rd> = 0.5
+
+	o<rectpocket> call [#<rw>] [#<rh> + #<rhp>] [#<xref> + #<mirror>*[#<rx> + #<rw>/2 - #<_toolr>/2]] [#<yref> + #<ry> + #<rh>/2 + #<rhp>/2] [#<zref>] [#<zref> - #<rd>]
+	
+	G00 Z#<_zsafe> (retract)
+	
+	(Lower part is 6.8x6.27mm, starting 7.6mm from reference along x)
+	#<rw> = [6.8]
+	#<rh> = [6.27]
+	#<rhp> = [0.4]
+	#<rwp> = [0.4]
+	#<rx> = [7.6]
+	#<ry> = 0
+	#<rtd> = #<rd>
+	#<rbd> = [1.1]
+	
+	o<rectpocket> call [#<rw> + #<rwp>] [#<rh> + #<rhp>] [#<xref> + #<mirror>*[#<rx> + #<rw>/2 +#<rwp>/2]] [#<yref> + #<ry> + #<rh>/2 + #<rhp>/2] [#<zref> - #<rtd>] [#<zref> - #<rbd>]
+	
+	G00 Z#<_zsafe> (retract)
+	
+	
+	
+	("flatten" the bottom corner)
+	
+	#<rx> = 7.6
+	#<xpad> = 0.5
+	#<xn> =  [#<xref> + #<mirror> * #<rx>] (near- the cut part)
+	#<xf> = [#<xref> + #<mirror> * [#<rx> + #<_toolr> + #<xpad>]] (far- the uncut part)
+	G00 X#<xf> Y[#<yref> + #<_toolr>]
+	#<zt> = [#<zref>]
+	#<zb> = [#<zt> - 1.1]
+	o<clamp> call [#<zt> - #<_cutdepth>] [#<zb>] [#<zt>]
+	#<ccd> = #<_value>
+	G00 Z#<zt>
+	
+	
+	o1012 while [#<ccd> GE #<zb>]
+
+		(Go in and back)
+		G01 F#<_feedxy> X#<xn> Z#<ccd>
+		G01 F#<_feedxy> X#<xf> Z#<ccd>
+
+		(Set next cut depth)
+		o1011 if [ [#<ccd> GT #<zb>] AND [[#<ccd> - #<_cutdepth>] LE #<zb>] ]
+			#<ccd> = #<zb>
+		o1011 else
+			#<ccd> = [#<ccd> - #<_cutdepth>]
+		o1011 endif
+
+	o1012 endwhile
+	
+	G00 Z#<_zsafe> (retract)
+	
+	
+	
+	
+	
+o<hinge_inset_lid_function> endsub
+
