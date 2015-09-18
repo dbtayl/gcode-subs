@@ -1,0 +1,19 @@
+G94	(Start in units/min mode)
+(G20) (inch units)
+G21 (mm units)
+G90 (absolute coords)
+
+(G64 P0.001) (Maximum deviation from commanded toolpath)
+
+
+(Set these accordingly- these variables are used by the subroutines)
+#<_toolr> = 1					(Tool radius)
+#<_feedxy> = [30*25.4]			(X/Y feed rate)
+#<_feedz> = [3 * 25.4]			(Z feed rate)
+#<_zsafe> = 3					(Safe height)
+#<_cutdepth> = [0.01 * 25.4]	(How much material to remove per pass)
+#<_stepover> = 0.8				(Fraction of cutter DIAMETER to remove per clearing pass)
+
+
+
+M2	(stop program)
